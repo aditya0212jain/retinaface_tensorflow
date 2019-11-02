@@ -80,26 +80,39 @@ def evaluator(name,num_filt,num_anchors,num_outputs_per_anchors=5,num_feature_fi
 def get_anchors_for_fpn(anchors_cfg,fpn_features):
     """
     Arg:
-        anchors_cfg : anchors configuration for different feature maps
+        anchors_cfg : anchors configuration for different feature maps ( dict with anchor configuration example: anchors_cfg[0]={'stride':1,base...} for fpn_features 0) 
         fpn_features : pyramid features from retinanet
     Return:
-        list of all anchors for different features 
+        dict of all anchors for different features 
     """
 
     ## get the anchors for different size feature maps 
     ## first get the reference anchors
-    ref_anchors = []
-    for i in range(len(fpn_features)):
-        ref_anchors.append(Anchors.generate_reference_anchors(base_size=anchors_cfg[i]['base_size'],
-                                                     ratios=anchors_cfg[i]['ratios'],
-                                                     scales=anchors_cfg[i]['scales']))
+    ref_anchors = {}
+    
+    for key in anchors_cfg.keys():
+        ref_anchors[key] = Anchors.generate_reference_anchors(base_size=anchors_cfg[key]['base_size'],
+                                                     ratios=anchors_cfg[key]['ratios'],
+                                                     scales=anchors_cfg[key]['scales'])
+    
+#     for i in range(len(fpn_features)):
+#         ref_anchors.append(Anchors.generate_reference_anchors(base_size=anchors_cfg[i]['base_size'],
+#                                                      ratios=anchors_cfg[i]['ratios'],
+#                                                      scales=anchors_cfg[i]['scales']))
     ## get the anchors for different feature maps
-    anchors = []
-    for i in range(len(fpn_features)):
-        anchors.append(Anchors.generate_anchors_over_feature_map(fpn_features[i].shape[1].value,
-                                                                 fpn_features[i].shape[2].value,
-                                                                 ref_anchors=ref_anchors[i],
-                                                                 stride=anchors_cfg[i]['stride']).reshape(-1,4))
+    anchors = {}
+    
+    for key in anchors_cfg.keys():
+        print("fpn"+str(key)+": ("+str(fpn_features[key].shape[1].value)+","+str(fpn_features[key].shape[2].value)+")")
+        anchors[key] = Anchors.generate_anchors_over_feature_map(fpn_features[key].shape[1].value,
+                                                                 fpn_features[key].shape[2].value,
+                                                                 ref_anchors=ref_anchors[key],
+                                                                 stride=anchors_cfg[key]['stride']).reshape(-1,4)
+#     for i in range(len(fpn_features)):
+#         anchors.append(Anchors.generate_anchors_over_feature_map(fpn_features[i].shape[1].value,
+#                                                                  fpn_features[i].shape[2].value,
+#                                                                  ref_anchors=ref_anchors[i],
+#                                                                  stride=anchors_cfg[i]['stride']).reshape(-1,4))
     return anchors
 
 def apply_model(model,feature):
@@ -127,16 +140,26 @@ def retinanet(input_,anchors_cfg,features):
     
     anchors = get_anchors_for_fpn(anchors_cfg=anchors_cfg,fpn_features=fpn_features)
     
-    names=[ str(i) for i in range(len(anchors))]
+    names = {}
+    for key in anchors.keys():
+        names[key] = str(key)
     
-    evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in range(len(fpn_features)) ]
+    evaluators = {}
+    for key in anchors_cfg.keys():
+        evaluators[key] = evaluator(names[key],num_filt=256,num_anchors=len(anchors[key]))
+#     evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in anchors_cfg.keys() ]
 #     ans = keras.layers.Concatenate(axis=1)([ evaluator(names[i],fpn_features[i],len(anchors[i]),5)
 #                                             for i in range(len(fpn_features)) ])
 #   
-    fpn_o = [apply_model(model,(fpn_features[i])) for i,model in enumerate(evaluators)]
+    fpn_o = []
+    for key in sorted(evaluators.keys()):
+        fpn_o.append(apply_model(evaluators[key],(fpn_features[key])))
 
-    ans = keras.layers.Concatenate(axis=1)(fpn_o)
-    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet')
+#     fpn_o = [apply_model(model,(fpn_features[i])) for i,model in enumerate(evaluators)]
+
+    
+    ans = keras.layers.Concatenate(axis=1,name='out')(fpn_o)
+    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet'), anchors
     
 
 ############################################################################
@@ -186,3 +209,4 @@ def test():
 
 if __name__ == "__main__":
     test()
+    print("retinanet")

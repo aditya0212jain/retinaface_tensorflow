@@ -62,16 +62,16 @@ def _scale_enum(anchor, scales):
 
 ############################################################################
 
-def generate_reference_anchors(base_size=16,ratios=[0.5,1,2],scales=2 ** np.arange(0, 3)):
+def generate_reference_anchors(base_size=16,ratios=[1,1.5],scales=2 ** np.arange(0, 3)):
     """
     Given a base size, ratios and scales it generates all the reference anchors 
     return [len(ratios)*len(scales),4] array of all anchors
     """
     base_anchor = np.array([1, 1, base_size, base_size]) - 1
-    print(base_anchor)
+#     print(base_anchor)
     ratio_anchors = _ratio_enum(base_anchor, ratios)
-    print(ratio_anchors)
-    print(scales)
+#     print(ratio_anchors)
+#     print(scales)
     anchors = np.vstack([_scale_enum(ratio_anchors[i, :], scales)
                          for i in range(ratio_anchors.shape[0])])
     return anchors
@@ -107,7 +107,7 @@ def get_iou(anchors,gt_boxes):
     """
     N = anchors.shape[0]
     M = gt_boxes.shape[0]
-    iou_a = np.zero([N,M])
+    iou_a = np.zeros((N,M))
     for i in range(M):
         gt_box_area = (gt_boxes[i][2]-gt_boxes[i][0]+1)*(gt_boxes[i][3]-gt_boxes[i][1]+1)
         for n in range(N):
@@ -159,8 +159,8 @@ def get_labels_and_regression_values(anchors,gt_boxes,image_shape=None,positive_
     labels : [N,1+1] additional value for ignoring or not (1->positive 0 for negative, -1 for ignoring)
     regression : [N,4+1] additional value for ignoring or not
     """
-    labels = np.zeros(anchors.shape[0],2)
-    regression = np.zeros(anchors.shape[0],5)
+    labels = np.zeros((anchors.shape[0],2))
+    regression = np.zeros((anchors.shape[0],5))
     ## get all the ious between all anchors and all gt_boxes
     all_iou = get_iou(anchors,gt_boxes)
     ## get the gt_box index with maximum overlap for each anchor
