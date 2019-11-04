@@ -35,7 +35,7 @@ class WiderDataset:
             cor = line.strip().split(' ')
             if len(cor)==1:
                 continue
-            image_labels[image_names[-1]].append(map(int,cor[:4]))
+            image_labels[image_names[-1]].append([int(val) for val in cor[:4]])
         label_file.close()
         return image_labels
         

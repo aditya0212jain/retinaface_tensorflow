@@ -102,10 +102,12 @@ def get_anchors_for_fpn(anchors_cfg,fpn_features):
     ## get the anchors for different feature maps
     anchors = {}
     
+    ##fpn_features[key].shape[1].value for tf version 1.14
+
     for key in anchors_cfg.keys():
-        print("fpn"+str(key)+": ("+str(fpn_features[key].shape[1].value)+","+str(fpn_features[key].shape[2].value)+")")
-        anchors[key] = Anchors.generate_anchors_over_feature_map(fpn_features[key].shape[1].value,
-                                                                 fpn_features[key].shape[2].value,
+        print("fpn"+str(key)+": ("+str(fpn_features[key].shape[1])+","+str(fpn_features[key].shape[2])+")")
+        anchors[key] = Anchors.generate_anchors_over_feature_map(fpn_features[key].shape[1],
+                                                                 fpn_features[key].shape[2],
                                                                  ref_anchors=ref_anchors[key],
                                                                  stride=anchors_cfg[key]['stride']).reshape(-1,4)
 #     for i in range(len(fpn_features)):
@@ -138,15 +140,15 @@ def retinanet(input_,anchors_cfg,features):
     ## extract the pyramid features from the backbone features
     fpn_features = get_fpn_featureMaps(features,num_filt=256)
     
-    anchors = get_anchors_for_fpn(anchors_cfg=anchors_cfg,fpn_features=fpn_features)
+    # anchors = get_anchors_for_fpn(anchors_cfg=anchors_cfg,fpn_features=fpn_features)
     
     names = {}
-    for key in anchors.keys():
+    for key in anchors_cfg.keys():
         names[key] = str(key)
     
     evaluators = {}
     for key in anchors_cfg.keys():
-        evaluators[key] = evaluator(names[key],num_filt=256,num_anchors=len(anchors[key]))
+        evaluators[key] = evaluator(names[key],num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']))
 #     evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in anchors_cfg.keys() ]
 #     ans = keras.layers.Concatenate(axis=1)([ evaluator(names[i],fpn_features[i],len(anchors[i]),5)
 #                                             for i in range(len(fpn_features)) ])
@@ -159,7 +161,7 @@ def retinanet(input_,anchors_cfg,features):
 
     
     ans = keras.layers.Concatenate(axis=1,name='out')(fpn_o)
-    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet'), anchors
+    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet')
     
 
 ############################################################################
@@ -184,6 +186,11 @@ def resnet50_retinanet(input_shape,anchors_cfg):
     retinanet_v = retinanet(inputs,anchors_cfg,features)
     
     return retinanet_v
+
+############################################################################
+
+############################################################################
+
 
 def test():
     """

@@ -62,6 +62,13 @@ def _scale_enum(anchor, scales):
 
 ############################################################################
 
+def generate_features_shape(image_shape,feature_levels):
+    img_shape = np.array(image_shape[:2])
+    feature_levels = np.array(feature_levels)+3
+    feature_shapes = [(img_shape+2**x -1)//(2**x) for x in feature_levels]
+    return feature_shapes
+
+
 def generate_reference_anchors(base_size=16,ratios=[1,1.5],scales=2 ** np.arange(0, 3)):
     """
     Given a base size, ratios and scales it generates all the reference anchors 
@@ -93,6 +100,18 @@ def generate_anchors_over_feature_map(f_h,f_w,ref_anchors,stride=1):
                 anchors[h,w,n,2] = ref_anchors[n,2] + move_w
                 anchors[h,w,n,3] = ref_anchors[n,3] + move_h
     return anchors
+
+def generate_anchors_from_input_shape(image_shape,anchors_cfg):
+    feature_levels = sorted(anchors_cfg.keys())
+    all_anchors = np.zeros((0,4))
+    feature_shapes = generate_features_shape(image_shape,feature_levels)
+    for i,fs in enumerate(feature_shapes):
+        ref_anchors = generate_reference_anchors(anchors_cfg[feature_levels[i]]['base_size'],
+                                                anchors_cfg[feature_levels[i]]['rations'],
+                                                anchors_cfg[feature_levels[i]]['scales'])
+        anchors = generate_anchors_over_feature_map(fs[0],fs[1],ref_anchors,anchors_cfg[feature_levels[i]]['stride'])
+        all_anchors = np.append(all_anchors,anchors.reshape(-1,4),axis=0)
+    return all_anchors
 
 ############################################################################
 
@@ -151,7 +170,7 @@ def get_regression_target_values(anchors,gt_boxes):
 
 ############################################################################
 
-def get_labels_and_regression_values(anchors,gt_boxes,image_shape=None,positive_threshold=0.5,negative_threshold=0.4):
+def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_threshold=0.5,negative_threshold=0.4):
     """
     anchors: [N,4] all anchors for a feature map
     gt_boxes: [M,5] all gt_boxes with label
@@ -196,3 +215,15 @@ def get_labels_and_regression_values(anchors,gt_boxes,image_shape=None,positive_
         regression[outside_indices_y,-1] = -1
     
     return regression, labels
+
+def get_regression_and_labels_batch(anchors,image_batch,annotations_batch,positive_threshold=0.5,negative_threshold=0.4):
+    regression_batch = np.zeros((0,anchors.shape[0],4+1))
+    label_batch = np.zeros((0,anchors.shape[0],1+1))
+
+    for (image,annotation) in zip(image_batch,annotations_batch):
+        # if annotation['bbox'].shape[0]:
+        regression , labels = get_regression_and_labels_values(anchors,annotation['bbox'],image.shape)
+        regression_batch = np.append(regression_batch,regression,axis=0)
+        label_batch = np.append(label_batch,labels,axis=0)
+    
+    return regression_batch , label_batch

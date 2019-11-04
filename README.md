@@ -6,3 +6,9 @@ Aim : Increasing the inference time of the detection
 
 notebooks folder contains all the jupyter notebooks used for experimentations
 The python files contains the final model 
+
+## Structure:
+
+### Flow for training
+
+Data -> Dataset Class object -> Generator -> Model.fit_generator
