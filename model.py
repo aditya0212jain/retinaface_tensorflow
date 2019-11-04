@@ -10,6 +10,26 @@ from tensorflow import keras
 import anchors as Anchors
 import backbone as Backbone
 
+class UpsampleLike(keras.layers.Layer):
+    """ Keras layer for upsampling a Tensor to be the same shape as another Tensor.
+    """
+
+    def call(self, inputs, **kwargs):
+        source, target = inputs
+        target_shape = keras.backend.shape(target)
+        if keras.backend.image_data_format() == 'channels_first':
+            source = tf.transpose(source, (0, 2, 3, 1))
+            output = tf.image.resize(source, (target_shape[2], target_shape[3]), method='nearest')
+            output = tf.transpose(output, (0, 3, 1, 2))
+            return output
+        else:
+            return tf.image.resize(source, (target_shape[1], target_shape[2]), method='nearest')
+
+    def compute_output_shape(self, input_shape):
+        if keras.backend.image_data_format() == 'channels_first':
+            return (input_shape[0][0], input_shape[0][1]) + input_shape[1][2:4]
+        else:
+            return (input_shape[0][0],) + input_shape[1][1:3] + (input_shape[0][-1],)
 
 ############################################################################
 
@@ -21,8 +41,9 @@ def get_upsampleAndSum(to_upsample,to_add,num_filt=256):
         b = (1x1 Conv)(to_add)
         return add[a,b] 
     """
-    c = keras.layers.UpSampling2D(size=(2, 2), data_format=None, interpolation='nearest')(to_upsample)
+    # c = keras.layers.UpSampling2D(size=(2, 2), data_format=None, interpolation='nearest')(to_upsample)
     C4d2 = keras.layers.Conv2D(num_filt,(1,1),strides=(1,1),padding='same')(to_add)
+    c = UpsampleLike()([to_upsample,C4d2])
     Pf = keras.layers.add([C4d2,c])
     return Pf
 

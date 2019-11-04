@@ -115,5 +115,7 @@ class Generator(keras.utils.Sequence):
 
     def __getitem__(self,index):
         batch = self.batches[index]
+        print(batch)
         inputs, targets = self.get_inputs_and_targets(batch)
+        targets = np.concatenate([targets[0][:,:,:4],targets[1]],axis=2)
         return inputs,targets
