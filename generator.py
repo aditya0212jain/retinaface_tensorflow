@@ -11,9 +11,9 @@ class Generator(keras.utils.Sequence):
     Generator class for training
     """
 
-    def __init__(self,dataset,anchors_cfg,batch_size=1):
-        self.image_paths , self.annotations = self.get_PathsAndAnnotations_dataset(dataset)
+    def __init__(self,dataset,anchors_cfg,batch_size=1,batch_by='random'):
         self.len = len(dataset.data) 
+        self.image_paths , self.annotations = self.get_PathsAndAnnotations_dataset(dataset)
         self.batch_size = batch_size
         self.anchors_cfg = anchors_cfg
         self.make_batches()

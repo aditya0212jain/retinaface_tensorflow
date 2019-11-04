@@ -107,7 +107,7 @@ def generate_anchors_from_input_shape(image_shape,anchors_cfg):
     feature_shapes = generate_features_shape(image_shape,feature_levels)
     for i,fs in enumerate(feature_shapes):
         ref_anchors = generate_reference_anchors(anchors_cfg[feature_levels[i]]['base_size'],
-                                                anchors_cfg[feature_levels[i]]['rations'],
+                                                anchors_cfg[feature_levels[i]]['ratios'],
                                                 anchors_cfg[feature_levels[i]]['scales'])
         anchors = generate_anchors_over_feature_map(fs[0],fs[1],ref_anchors,anchors_cfg[feature_levels[i]]['stride'])
         all_anchors = np.append(all_anchors,anchors.reshape(-1,4),axis=0)
@@ -204,9 +204,9 @@ def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_
     
     if image_shape!=None:
         ## filtering anchors with center outside the image shape
-        anchors_center = np.stack((anchors[:,2] + anchors[:,0])/2,(anchors[:,3]+anchors[:,1])/2).T
+        anchors_center = np.stack(((anchors[:,2] + anchors[:,0])/2,(anchors[:,3]+anchors[:,1])/2)).T
         ## getting indices of anchors outside the image: image_shape= (h,w) of the image
-        outside_indices_x = np.logical_or(anchors_center[:,0]>=image_shape[1],anchors_center[:0]<0)
+        outside_indices_x = np.logical_or(anchors_center[:,0]>=int(image_shape[1]),anchors_center[:,0]<0)
         outside_indices_y = np.logical_or(anchors_center[:,1]>=image_shape[0],anchors_center[:,1]<0)
         ## ignoring outside anchors
         labels[outside_indices_x,-1] = -1
@@ -217,13 +217,15 @@ def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_
     return regression, labels
 
 def get_regression_and_labels_batch(anchors,image_batch,annotations_batch,positive_threshold=0.5,negative_threshold=0.4):
-    regression_batch = np.zeros((0,anchors.shape[0],4+1))
-    label_batch = np.zeros((0,anchors.shape[0],1+1))
+    regression_batch = []
+    label_batch = []
+
+    annotations_batch = annotations_batch['bbox']
 
     for (image,annotation) in zip(image_batch,annotations_batch):
         # if annotation['bbox'].shape[0]:
-        regression , labels = get_regression_and_labels_values(anchors,annotation['bbox'],image.shape)
-        regression_batch = np.append(regression_batch,regression,axis=0)
-        label_batch = np.append(label_batch,labels,axis=0)
+        regression , labels = get_regression_and_labels_values(anchors,np.asarray(annotation),image.shape)
+        regression_batch.append(regression)
+        label_batch.append(labels)
     
-    return regression_batch , label_batch
+    return np.asarray(regression_batch) , np.asarray(label_batch)
