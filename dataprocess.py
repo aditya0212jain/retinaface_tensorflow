@@ -3,12 +3,14 @@ import tensorflow as tf
 from PIL import Image
 import glob
 import os
+import xml.etree.ElementTree as ET
 
 class WiderDataset:
     """
     [left, top, width, height, score]
     """
-    def __init__(self,image_folder_path,label_path):
+    def __init__(self,image_folder_path,label_path,style="tlwh"):
+        self.style = style
         im_paths = self.get_image_paths(image_folder_path)
         image_labels = self.get_labels(label_path)
         self.data = self.get_image_unified(im_paths,image_labels)
@@ -71,3 +73,74 @@ class WiderDataset:
     
     def preprocess(self,image):
         return image
+
+class maviData:
+    """
+    [left, top, width, height, score]
+    each object : {'bbox': ,'path':}
+    """
+    def __init__(self,image_root_dir,annotations_root_dir):
+        im_paths = glob.glob(image_root_dir+"*")
+        image_labels = self.get_labels(annotations_root_dir)
+        self.data = self.get_image_unified(im_paths,image_labels)
+        return
+        
+    def get_labels(self,annotations_root_dir):
+        ann_locs = glob.glob(annotations_root_dir+"*")
+        image_labels ={}
+        for ann in ann_locs:
+            bboxs = self.get_topLeftWidthHeight(ann)
+            im = self.get_last(ann)[:-4]
+            image_labels[im] = bboxs
+        return image_labels
+    
+    def get_image_unified(self,im_paths,image_labels):
+        data = []
+        for path in im_paths:
+#             print(path)
+            dataObject = {}
+            dataObject['path'] = path
+            dataObject['bbox'] = image_labels[self.get_last(path)[:-4]]
+            if dataObject['bbox']:
+                data.append(dataObject)
+        return data
+        
+    def get_item(self,i,style='anchor'):
+        image = np.array(Image.open(self.data[i]['path']))
+        label = self.data[i]['bbox']
+        if style=='anchor':
+            label = self.get_anchor_type(label)
+        ### do the preprocessing on the image here
+        ## TODO 
+        # image = self.preprocess(image)
+        return image,label
+    
+    def get_anchor_type(self,labels):
+        new_label = []
+        for l in labels:
+            new_label.append([l[0],l[1],l[0]+l[2],l[1]+l[3]])
+        return new_label
+        
+    
+    def preprocess(self,image):
+        return image
+    
+    def get_topLeftWidthHeight(self,filepath):
+        tree = ET.parse(filepath)
+        root = tree.getroot()
+        annotations = []
+        for bndbox in root.findall('object/bndbox'):
+            xmin = bndbox.find('xmin').text
+            xmax = bndbox.find('xmax').text
+            ymin = bndbox.find('ymin').text
+            ymax = bndbox.find('ymax').text
+            x = xmin
+            y = ymin 
+            w = str(int(xmax) - int(xmin))
+            h = str(int(ymax) - int(ymin))
+            annotations.append((int(x),int(y),int(w),int(h)))
+        return annotations
+    
+    def get_last(self,x):
+        a = x.split('/')[-1]
+        return a

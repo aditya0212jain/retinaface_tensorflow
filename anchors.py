@@ -64,7 +64,7 @@ def _scale_enum(anchor, scales):
 
 def generate_features_shape(image_shape,feature_levels):
     img_shape = np.array(image_shape[:2])
-    feature_levels = np.array(feature_levels)+3
+    feature_levels = np.array(feature_levels)+2
     feature_shapes = [(img_shape+2**x -1)//(2**x) for x in feature_levels]
     return feature_shapes
 
@@ -224,8 +224,15 @@ def get_regression_and_labels_batch(anchors,image_batch,annotations_batch,positi
 
     for (image,annotation) in zip(image_batch,annotations_batch):
         # if annotation['bbox'].shape[0]:
-        regression , labels = get_regression_and_labels_values(anchors,np.asarray(annotation),image.shape)
-        regression_batch.append(regression)
-        label_batch.append(labels)
+        # print(annotation)   
+        if annotation.any():
+            regression , labels = get_regression_and_labels_values(anchors,np.asarray(annotation),image.shape)
+            regression_batch.append(regression)
+            label_batch.append(labels)
+        else:
+            labels = np.zeros((anchors.shape[0],2))
+            regression = np.zeros((anchors.shape[0],5))
+            regression_batch.append(regression)
+            label_batch.append(labels)
     
     return np.asarray(regression_batch) , np.asarray(label_batch)

@@ -58,18 +58,22 @@ def get_fpn_featureMaps(features,num_filt=256):
     C5d1 = keras.layers.Conv2D(num_filt,(1,1),strides=(1,1),padding='same')(C5)
     P5 = keras.layers.Conv2D(num_filt,(3,3),strides=(1,1),padding='same')(C5d1)
     
-    P4d = get_upsampleAndSum(C5d1,C4)
+    P4d = get_upsampleAndSum(C5d1,C4,num_filt)
     P4 = keras.layers.Conv2D(num_filt,(3,3),strides=(1,1),padding='same')(P4d)
     
-    P3d = get_upsampleAndSum(P4d,C3)
+    P3d = get_upsampleAndSum(P4d,C3,num_filt)
     P3 = keras.layers.Conv2D(num_filt,(3,3),strides=(1,1),padding='same')(P3d)
+
+    ## retina face using shallower feature map
+    P2d = get_upsampleAndSum(P3d,C2,num_filt)
+    P2 = keras.layers.Conv2D(num_filt,(3,3),strides=(1,1),padding='same')(P2d)
     
     P6 = keras.layers.Conv2D(num_filt,(3,3),strides=(2,2),padding='same')(C5)
-    P7d = keras.layers.ReLU()(P6)
-    P7 = keras.layers.Conv2D(num_filt,(3,3),strides=(2,2),padding='same')(P7d)
+    # P7d = keras.layers.ReLU()(P6)
+    # P7 = keras.layers.Conv2D(num_filt,(3,3),strides=(2,2),padding='same')(P7d)
     
-    return P3,P4,P5,P6,P7
-
+    # return P3,P4,P5,P6,P7
+    return P2,P3,P4,P5,P6
 
 ############################################################################
 
@@ -169,7 +173,8 @@ def retinanet(input_,anchors_cfg,features):
     
     evaluators = {}
     for key in anchors_cfg.keys():
-        evaluators[key] = evaluator(names[key],num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']))
+        evaluators[key] = evaluator(names[key],num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']),
+                                                    num_feature_filt=256)
 #     evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in anchors_cfg.keys() ]
 #     ans = keras.layers.Concatenate(axis=1)([ evaluator(names[i],fpn_features[i],len(anchors[i]),5)
 #                                             for i in range(len(fpn_features)) ])

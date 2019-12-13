@@ -6,7 +6,7 @@ import os
 # import tensorflow.contrib.slim as slim
 import tensorflow.keras as keras
 
-def get_feature_extracting_model(input_tensor,input_shape=(480,640,3),model_name='resnet50',layer_index=[6,38,80,142,174]):
+def get_feature_extracting_model(input_tensor=None,input_shape=(480,640,3),model_name='resnet50',layer_index=[6,38,80,142,174]):
     """
     input_shape : the input size of the image 
     model_name : which backbone model to be used for feature extraction

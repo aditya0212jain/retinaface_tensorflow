@@ -126,9 +126,9 @@ def focal_plus_smooth(sigma=0.3,alpha=0.25, gamma=2.0):
         ###############################################################################
         ## computing focal loss now
         ###############################################################################
-        labels         = y_true[:, :,4:-1]
+        labels         = y_true[:, :,4]
         anchor_state   = y_true[:, :, -1]  # -1 for ignore, 0 for background, 1 for object
-        classification = y_pred[:,:,4:]
+        classification = y_pred[:,:,4]
 
         # filter out "ignore" anchors
         indices        = tf.where(keras.backend.not_equal(anchor_state, -1))
@@ -140,6 +140,8 @@ def focal_plus_smooth(sigma=0.3,alpha=0.25, gamma=2.0):
         alpha_factor = tf.where(keras.backend.equal(labels, 1), alpha_factor, 1 - alpha_factor)
         focal_weight = tf.where(keras.backend.equal(labels, 1), 1 - classification, classification)
         focal_weight = alpha_factor * focal_weight ** gamma
+
+        # cls_loss = focal_weight * keras.backend.binary_crossentropy(labels, classification)
 
         cls_loss = focal_weight * keras.backend.binary_crossentropy(labels, classification)
 
