@@ -381,7 +381,6 @@ def clip_bbox(bbox,width,height):
     return bbox
 def filter_detections(ans,bbox,score_threshold=0.5,max_detections=300,nms_threshold=0.05):
     scores = ans[0]
-    # boxes = ans[:,:,:4][0]
     boxes = bbox[0]
     print(scores.shape)
     print(boxes.shape)
@@ -390,20 +389,9 @@ def filter_detections(ans,bbox,score_threshold=0.5,max_detections=300,nms_thresh
     filtered_b = tf.gather_nd(boxes,indices)
     filtered_s = tf.gather(scores,indices)[:,0]
     
-    # print(boxes.shape)
-#     filtered_s = filtered_s.reshape((filtered_s.shape[0]))
-    # print(filtered_b.shape)
-    # print(filtered_s.shape)
-    
     nms_indices = tf.image.non_max_suppression(filtered_b,filtered_s,max_output_size=max_detections,iou_threshold=nms_threshold)
-    
-#     return nms_indices
-    # print(nms_indices.shape)
+
     nms_indices = tf.gather(indices,nms_indices)
-    # print(nms_indices)
-    # boxes_f = tf.gather_nd(filtered_b,nms_indices)
-    # scores_f = tf.gather(filtered_s,nms_indices)
-    # return boxes_f,scores_f
     return nms_indices
 
 def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,image_shape=(480,640),context=False,score_threshold=0.05,nms_threshold=0.5):
@@ -432,11 +420,9 @@ def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,im
     anchors = Anchors.generate_anchors_from_input_shape((image_shape[0],image_shape[1]),anchors_cfg)
 
     anchors = tf.convert_to_tensor(anchors,dtype='float32')
-    # bbox = apply_regression(anchors,regression=ans[0][:,:4])
     print(retinanet_v.outputs)
     anchors = tf.expand_dims(anchors,axis=0)
     print(anchors.shape)
-    # bbox = retinanet_v.outputs[0][:,:,:4] + anchors
 
     ## taking care of width and height
     # bbox = anchors
@@ -453,35 +439,13 @@ def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,im
     bbox = tf.stack([bx1,by1,bx2,by2],axis=2)
     print('bx1 shape: ',bx1.shape)
     print('bbox shape now :',bbox.shape)
-    # bbox = keras.backend.bbox_transform_inv(anchors,retinanet_v.outputs[0][:,:,:4])
-    # print("bbox shape before clip",bbox.shape)
     bbox = clip_bbox(bbox,image_shape[0],image_shape[1])
-    # print("bbox shape after clip",bbox.shape)
-    # bbox = tf.cast(bbox,tf.float32)
 
     scores = retinanet_v.outputs[0][:,:,4]
     indices = filter_detections(scores,bbox,score_threshold=score_threshold,nms_threshold=nms_threshold)
     
     print(scores.shape)
-    # scores = retinanet_v.outputs[0][:,:,4][0]
-    # boxes = ans[:,:,:4][0]
-    # boxes = bbox[0]
-    # print(scores.shape)
-    # print(boxes.shape)
-    # print(indices)
-    # indices = tf.where(tf.greater(scores,score_threshold))
-    
-    # filtered_b = tf.gather_nd(boxes,indices)
-    # filtered_s = tf.gather(scores,indices)[:,0]
-
-    
-
-    # print(scores.shape)
-    # print(bbox[0].shape)
-    # print(indices.shape)
     indices = tf.expand_dims(indices,axis=0)
-    # box1 = tf.gather_nd(bbox,indices)
-    # scores1 = tf.gather_nd(scores,indices)
     
     return keras.models.Model(inputs=inputs, outputs=[bbox,scores,indices], name="retinanet_bbox")
 
@@ -490,6 +454,7 @@ def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,im
 ############################################################################  
 
 def test():
+    """TODO udpate the test function"""
     """
         Note: anchors_cfg is a list of dictionary with keys = ['base_size','ratios','scales','stride'] 
               for each feature map on which detection is being made 
@@ -512,5 +477,4 @@ def test():
     print('time take: ',c-a)
 
 if __name__ == "__main__":
-    test()
-    print("retinanet")
+    print("this is model.py, use train.py for training and evaluate.py for results")
