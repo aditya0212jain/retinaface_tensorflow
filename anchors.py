@@ -3,6 +3,13 @@ import tensorflow as tf
 from PIL import Image
 import glob
 import os
+import time
+import sys
+sys.path.append('./cython/')
+import iou
+
+current_milli_time = lambda: int(round(time.time() * 1000))
+
 # import tensorflow.contrib.slim as slim
 
 ############################################################################
@@ -117,7 +124,7 @@ def generate_anchors_from_input_shape(image_shape,anchors_cfg):
 
 ############################################################################
 
-def get_iou(anchors,gt_boxes):
+def get_iou_Anchors(anchors,gt_boxes):
     """
     anchors: [N,4] all anchors for a feature map
     gt_boxes: [M,5] all gt_boxes with label
@@ -181,7 +188,9 @@ def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_
     labels = np.zeros((anchors.shape[0],2))
     regression = np.zeros((anchors.shape[0],5))
     ## get all the ious between all anchors and all gt_boxes
-    all_iou = get_iou(anchors,gt_boxes)
+    t1 = current_milli_time()
+    all_iou = iou.get_iou(anchors,gt_boxes)
+    # print("time in getting ious: ",current_milli_time()- t1)
     ## get the gt_box index with maximum overlap for each anchor
     max_overlap = np.argmax(all_iou,axis=1)
     ## get the value of that max overlap
@@ -226,6 +235,7 @@ def get_regression_and_labels_batch(anchors,image_batch,annotations_batch,positi
         # if annotation['bbox'].shape[0]:
         # print(annotation)   
         if annotation.any():
+            print(image.shape)
             regression , labels = get_regression_and_labels_values(anchors,np.asarray(annotation),image.shape)
             regression_batch.append(regression)
             label_batch.append(labels)

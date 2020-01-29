@@ -23,5 +23,5 @@ def get_feature_extracting_model(input_tensor=None,input_shape=(480,640,3),model
     C = []
     for i in layer_index:
         C.append(model_i.get_layer(model_i.layers[i].name).output)
-    model = keras.models.Model(inputs = model_i.input,outputs=C)
+    # model = keras.models.Model(inputs = model_i.input,outputs=C)
     return C

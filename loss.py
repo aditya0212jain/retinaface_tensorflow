@@ -18,7 +18,8 @@ def focal(alpha=0.25, gamma=2.0):
         Returns
             The focal loss of y_pred w.r.t. y_true.
         """
-        labels         = y_true[:, :, :-1]
+        # labels         = y_true[:, :, :-1]
+        labels         = y_true[:, :,4]
         anchor_state   = y_true[:, :, -1]  # -1 for ignore, 0 for background, 1 for object
         classification = y_pred
 
@@ -63,8 +64,11 @@ def smooth_l1(sigma=3.0):
             The smooth L1 loss of y_pred w.r.t. y_true.
         """
         # separate target and state
-        regression        = y_pred
-        regression_target = y_true[:, :, :-1]
+        # regression        = y_pred
+        # regression_target = y_true[:, :, :-1]
+        # anchor_state      = y_true[:, :, -1]
+        regression        = y_pred[:,:,:4]
+        regression_target = y_true[:, :, :4]
         anchor_state      = y_true[:, :, -1]
 
         # filter out "ignore" anchors
@@ -122,6 +126,7 @@ def focal_plus_smooth(sigma=0.3,alpha=0.25, gamma=2.0):
         # compute the normalizer: the number of positive anchors
         normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
         normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
+        # normalizer = keras.backend.cast(normalizer, dtype='float64')
         smooth_loss = keras.backend.sum(regression_loss) / normalizer
         ###############################################################################
         ## computing focal loss now
@@ -149,8 +154,10 @@ def focal_plus_smooth(sigma=0.3,alpha=0.25, gamma=2.0):
         normalizer = tf.where(keras.backend.equal(anchor_state, 1))
         normalizer = keras.backend.cast(keras.backend.shape(normalizer)[0], keras.backend.floatx())
         normalizer = keras.backend.maximum(keras.backend.cast_to_floatx(1.0), normalizer)
+        # normalizer = keras.backend.cast(normalizer, dtype='float64')
         focal_loss = keras.backend.sum(cls_loss) / normalizer
         
-        return focal_loss+smooth_loss
+        return focal_loss+(0.25*smooth_loss)
+        # return smooth_loss
 
     return _added_loss

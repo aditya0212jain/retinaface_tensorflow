@@ -43,7 +43,10 @@ def get_upsampleAndSum(to_upsample,to_add,num_filt=256):
     """
     # c = keras.layers.UpSampling2D(size=(2, 2), data_format=None, interpolation='nearest')(to_upsample)
     C4d2 = keras.layers.Conv2D(num_filt,(1,1),strides=(1,1),padding='same')(to_add)
-    c = UpsampleLike()([to_upsample,C4d2])
+    upsampled_shape = keras.backend.shape(C4d2)
+    # print("upsample shape: ",upsampled_shape)
+    c = tf.image.resize(to_upsample,(upsampled_shape[1],upsampled_shape[2]),method='nearest')
+    # c = UpsampleLike()([to_upsample,C4d2])
     Pf = keras.layers.add([C4d2,c])
     return Pf
 
@@ -79,7 +82,7 @@ def get_fpn_featureMaps(features,num_filt=256):
 
 ############################################################################
 
-def evaluator(name,num_filt,num_anchors,num_outputs_per_anchors=5,num_feature_filt=256):
+def evaluator(name,num_filt,num_anchors,num_outputs_per_anchors=5,num_feature_filt=256,classification=False):
     """
     features = previous layers from the model
     num_filt = intermediate number of filters for conv
@@ -99,8 +102,53 @@ def evaluator(name,num_filt,num_anchors,num_outputs_per_anchors=5,num_feature_fi
     
     output = keras.layers.Reshape((-1,num_outputs_per_anchors))(outputs)
     
+
+    if classification==True:
+        output = keras.layers.Activation('sigmoid', name='pyramid_classification_sigmoid')(output)
+    
     model = keras.models.Model(inputs=tf_place,outputs=output,name=name)
     return model
+
+def context_module_evaluator(name,num_filt,num_anchors,num_outputs_per_anchors=5,num_feature_filt=256,classification=False):
+    """
+    features = previous layers from the model
+    num_filt = intermediate number of filters for conv
+    num_anchors = num_of_anchors for this feature
+    num_outputs_per_anchors = 4 for regression and 1 for classification
+    return the [N,5] N is the number of anchors
+    """
+    tf_place = keras.layers.Input(shape=(None,None,num_feature_filt))
+    
+    x1_128 = keras.layers.Conv2D(filters=128,activation='relu'
+                                      ,kernel_size=3,strides=1,padding='same')(tf_place)
+
+    x2_64 = keras.layers.Conv2D(filters=64,activation='relu'
+                                      ,kernel_size=3,strides=1,padding='same')(x1_128)
+
+    x3_64 = keras.layers.Conv2D(filters=64,activation='relu'
+                                      ,kernel_size=3,strides=1,padding='same')(x2_64)
+
+    print('x3_64 shape',x3_64.shape)
+    
+
+    x4 = keras.layers.concatenate([x1_128,x2_64,x3_64])
+    # print('x4 shape',x4.shape)
+
+
+    outputs_cls = keras.layers.Conv2D(filters=num_anchors*1
+                                  ,padding='same',kernel_size=3,strides=1)(x4)
+
+    outputs_reg = keras.layers.Conv2D(filters=num_anchors*4
+                                  ,padding='same',kernel_size=3,strides=1)(x4)
+
+    outputs_cls = keras.layers.Reshape((-1,1))(outputs_cls)
+    outputs_reg = keras.layers.Reshape((-1,4))(outputs_reg)
+    # if classification==True:
+    outputs_cls = keras.layers.Activation('sigmoid', name='pyramid_classification_sigmoid')(outputs_cls)
+
+    model = keras.models.Model(inputs=tf_place,outputs=[outputs_cls,outputs_reg],name=name)
+    return model
+                                                                     
     
 def get_anchors_for_fpn(anchors_cfg,fpn_features):
     """
@@ -188,13 +236,110 @@ def retinanet(input_,anchors_cfg,features):
     
     ans = keras.layers.Concatenate(axis=1,name='out')(fpn_o)
     return keras.models.Model(inputs=input_,outputs=ans,name='retinanet')
+
+############################################################################
+
+############################################################################
     
+def retinanet_separate_evaluators(input_,anchors_cfg,features):
+    """
+    Arg:
+        input_ : keras input layer for taking input
+        anchors_cfg : anchors configurations for different scales
+        features : backbone features
+    Return:
+        keras Model for retinanet whose output is [N,5] first four are bbox values and last one is label
+    """
+    ## extract the pyramid features from the backbone features
+    fpn_features = get_fpn_featureMaps(features,num_filt=256)
+    
+    # anchors = get_anchors_for_fpn(anchors_cfg=anchors_cfg,fpn_features=fpn_features)
+    
+    names = {}
+    for key in anchors_cfg.keys():
+        names[key] = str(key)
+    
+    evaluators_regression = {}
+    evaluators_classification = {}
+    for key in anchors_cfg.keys():
+        evaluators_regression[key] = evaluator(names[key]+"r",num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']),
+                                                    num_feature_filt=256,num_outputs_per_anchors=4)
+        evaluators_classification[key] = evaluator(names[key]+"c",num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']),
+                                                    num_feature_filt=256,num_outputs_per_anchors=1,classification=True)
+                                                    
+#     evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in anchors_cfg.keys() ]
+#     ans = keras.layers.Concatenate(axis=1)([ evaluator(names[i],fpn_features[i],len(anchors[i]),5)
+#                                             for i in range(len(fpn_features)) ])
+#   
+    fpn_regression = []
+    fpn_classification = []
+    for key in sorted(evaluators_classification.keys()):
+        fpn_regression.append(apply_model(evaluators_regression[key],(fpn_features[key])))
+        fpn_classification.append(apply_model(evaluators_classification[key],(fpn_features[key])))
+
+#     fpn_o = [apply_model(model,(fpn_features[i])) for i,model in enumerate(evaluators)]
+
+    
+    ans_regression = keras.layers.Concatenate(axis=1,name='out_regression')(fpn_regression)
+    ans_classification = keras.layers.Concatenate(axis=1,name='out_classification')(fpn_classification)
+    ans = keras.layers.Concatenate(axis=2,name="out")([ans_regression,ans_classification])
+    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet')
+
+#############################################################################################################################
+
+#############################################################################################################################
+
+def retinanet_context(input_,anchors_cfg,features):
+    """
+    Arg:
+        input_ : keras input layer for taking input
+        anchors_cfg : anchors configurations for different scales
+        features : backbone features
+    Return:
+        keras Model for retinanet whose output is [N,5] first four are bbox values and last one is label
+    """
+    ## extract the pyramid features from the backbone features
+    fpn_features = get_fpn_featureMaps(features,num_filt=256)
+    
+    # anchors = get_anchors_for_fpn(anchors_cfg=anchors_cfg,fpn_features=fpn_features)
+    
+    names = {}
+    for key in anchors_cfg.keys():
+        names[key] = str(key)
+    
+    # evaluators_regression = {}
+    evaluators = {}
+    # evaluators_classification = {}
+    for key in anchors_cfg.keys():
+        evaluators[key] = context_module_evaluator(names[key]+"r",num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']),
+                                                    num_feature_filt=256)
+        # evaluators_classification[key] = evaluator(names[key]+"c",num_filt=256,num_anchors=len(anchors_cfg[key]['scales'])*len(anchors_cfg[key]['ratios']),
+        #                                             num_feature_filt=256,num_outputs_per_anchors=1,classification=True)
+                                                    
+#     evaluators = [ evaluator(names[i],num_filt=256,num_anchors=len(anchors[i])) for i in anchors_cfg.keys() ]
+#     ans = keras.layers.Concatenate(axis=1)([ evaluator(names[i],fpn_features[i],len(anchors[i]),5)
+#                                             for i in range(len(fpn_features)) ])
+#   
+    fpn_regression = []
+    fpn_classification = []
+    for key in sorted(evaluators.keys()):
+        fpn_cls , fpn_reg = apply_model(evaluators[key],(fpn_features[key]))
+        fpn_regression.append(fpn_reg)
+        fpn_classification.append(fpn_cls)
+
+#     fpn_o = [apply_model(model,(fpn_features[i])) for i,model in enumerate(evaluators)]
+
+    
+    ans_regression = keras.layers.Concatenate(axis=1,name='out_regression')(fpn_regression)
+    ans_classification = keras.layers.Concatenate(axis=1,name='out_classification')(fpn_classification)
+    ans = keras.layers.Concatenate(axis=2,name="out")([ans_regression,ans_classification])
+    return keras.models.Model(inputs=input_,outputs=ans,name='retinanet')
 
 ############################################################################
 
 ############################################################################
 
-def resnet50_retinanet(input_shape,anchors_cfg):
+def resnet50_retinanet(input_shape,anchors_cfg,separate_evaluators=False):
     """
     creates a retinanet model with input_shape and anchors_cfg with resnet50 as backbone
     returns [N,5] where N is the total number of anchors 
@@ -202,21 +347,147 @@ def resnet50_retinanet(input_shape,anchors_cfg):
     ## get the backbone features of resnet
     inputs = keras.layers.Input(shape=input_shape)
     model_name = 'resnet50'
-    layer_index = [6,38,80,142,174]
+    layer_index = [4,38,80,142,174]
     features = Backbone.get_feature_extracting_model(input_tensor=inputs,
                                                      input_shape=input_shape,
                                                      model_name=model_name,
                                                      layer_index=layer_index)
     
     ## get the retina_net 
-    retinanet_v = retinanet(inputs,anchors_cfg,features)
+    if separate_evaluators==False:
+        retinanet_v = retinanet(inputs,anchors_cfg,features)
+    else:
+        retinanet_v = retinanet_context(inputs,anchors_cfg,features)
+        # retinanet_v = retinanet_separate_evaluators(inputs,anchors_cfg,features)
+    
     
     return retinanet_v
 
 ############################################################################
+#                   POST Processing
+############################################################################
+
+def apply_regression(anchors,regression):
+
+    anchors += regression
+    return anchors
+def clip_bbox(bbox,width,height):
+    x1,y1,x2,y2 = tf.unstack(bbox,axis=-1)
+    x1 = tf.clip_by_value(x1, 0, width)
+    y1 = tf.clip_by_value(y1, 0, height)
+    x2 = tf.clip_by_value(x2, 0, width)
+    y2 = tf.clip_by_value(y2, 0, height)
+    bbox = tf.stack([x1,y1,x2,y2],axis=2)
+    return bbox
+def filter_detections(ans,bbox,score_threshold=0.5,max_detections=300,nms_threshold=0.05):
+    scores = ans[0]
+    # boxes = ans[:,:,:4][0]
+    boxes = bbox[0]
+    print(scores.shape)
+    print(boxes.shape)
+    indices = tf.where(tf.greater(scores,score_threshold))
+    
+    filtered_b = tf.gather_nd(boxes,indices)
+    filtered_s = tf.gather(scores,indices)[:,0]
+    
+    # print(boxes.shape)
+#     filtered_s = filtered_s.reshape((filtered_s.shape[0]))
+    # print(filtered_b.shape)
+    # print(filtered_s.shape)
+    
+    nms_indices = tf.image.non_max_suppression(filtered_b,filtered_s,max_output_size=max_detections,iou_threshold=nms_threshold)
+    
+#     return nms_indices
+    # print(nms_indices.shape)
+    nms_indices = tf.gather(indices,nms_indices)
+    # print(nms_indices)
+    # boxes_f = tf.gather_nd(filtered_b,nms_indices)
+    # scores_f = tf.gather(filtered_s,nms_indices)
+    # return boxes_f,scores_f
+    return nms_indices
+
+def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,image_shape=(480,640),context=False,score_threshold=0.05,nms_threshold=0.5):
+    """
+    creates a retinanet model with input_shape and anchors_cfg with resnet50 as backbone
+    returns [N,5] where N is the total number of anchors 
+    """
+    ## get the backbone features of resnet
+    inputs = keras.layers.Input(shape=input_shape)
+    model_name = 'resnet50'
+    layer_index = [4,38,80,142,174]
+    features = Backbone.get_feature_extracting_model(input_tensor=inputs,
+                                                     input_shape=input_shape,
+                                                     model_name=model_name,
+                                                     layer_index=layer_index)
+    
+    ## get the retina_net 
+    if separate_evaluators==False:
+        retinanet_v = retinanet(inputs,anchors_cfg,features)
+    else:
+        if context==False:
+            retinanet_v = retinanet_separate_evaluators(inputs,anchors_cfg,features)
+        else:
+            retinanet_v = retinanet_context(inputs,anchors_cfg,features)
+    ## Post Processing
+    anchors = Anchors.generate_anchors_from_input_shape((image_shape[0],image_shape[1]),anchors_cfg)
+
+    anchors = tf.convert_to_tensor(anchors,dtype='float32')
+    # bbox = apply_regression(anchors,regression=ans[0][:,:4])
+    print(retinanet_v.outputs)
+    anchors = tf.expand_dims(anchors,axis=0)
+    print(anchors.shape)
+    # bbox = retinanet_v.outputs[0][:,:,:4] + anchors
+
+    ## taking care of width and height
+    # bbox = anchors
+    anchor_width = anchors[:,:,2] - anchors[:,:,0]
+    anchor_height = anchors[:,:,3] - anchors[:,:,1]
+    bx1 = anchors[:,:,0]
+    by1 = anchors[:,:,1]
+    bx2 = anchors[:,:,2]
+    by2 = anchors[:,:,3]
+    bx1 += retinanet_v.outputs[0][:,:,0]*0.2*anchor_width
+    by1 += retinanet_v.outputs[0][:,:,1]*0.2*anchor_height
+    bx2 += retinanet_v.outputs[0][:,:,2]*0.2*anchor_width
+    by2 += retinanet_v.outputs[0][:,:,3]*0.2*anchor_height
+    bbox = tf.stack([bx1,by1,bx2,by2],axis=2)
+    print('bx1 shape: ',bx1.shape)
+    print('bbox shape now :',bbox.shape)
+    # bbox = keras.backend.bbox_transform_inv(anchors,retinanet_v.outputs[0][:,:,:4])
+    # print("bbox shape before clip",bbox.shape)
+    bbox = clip_bbox(bbox,image_shape[0],image_shape[1])
+    # print("bbox shape after clip",bbox.shape)
+    # bbox = tf.cast(bbox,tf.float32)
+
+    scores = retinanet_v.outputs[0][:,:,4]
+    indices = filter_detections(scores,bbox,score_threshold=score_threshold,nms_threshold=nms_threshold)
+    
+    print(scores.shape)
+    # scores = retinanet_v.outputs[0][:,:,4][0]
+    # boxes = ans[:,:,:4][0]
+    # boxes = bbox[0]
+    # print(scores.shape)
+    # print(boxes.shape)
+    # print(indices)
+    # indices = tf.where(tf.greater(scores,score_threshold))
+    
+    # filtered_b = tf.gather_nd(boxes,indices)
+    # filtered_s = tf.gather(scores,indices)[:,0]
+
+    
+
+    # print(scores.shape)
+    # print(bbox[0].shape)
+    # print(indices.shape)
+    indices = tf.expand_dims(indices,axis=0)
+    # box1 = tf.gather_nd(bbox,indices)
+    # scores1 = tf.gather_nd(scores,indices)
+    
+    return keras.models.Model(inputs=inputs, outputs=[bbox,scores,indices], name="retinanet_bbox")
 
 ############################################################################
 
+############################################################################  
 
 def test():
     """

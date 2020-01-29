@@ -31,8 +31,8 @@ label_path = "../dataset/Wider/wider_face_split/wider_face_train_bbx_gt.txt"
 cropped_wider = "../dataset/Wider_cropped/train_images/"
 cropped_annotations = "../dataset/Wider_cropped/ground_truth.txt"
 
-# widerDataset = DataHandler.WiderDataset(image_folder_path,label_path)
-widerDataset = DataHandler.WiderDataset(cropped_wider,cropped_annotations)
+widerDataset = DataHandler.WiderDataset(image_folder_path,label_path)
+# widerDataset = DataHandler.WiderDataset(cropped_wider,cropped_annotations)
 
 # pixels = []
 # for data in widerDataset.data:
@@ -91,7 +91,7 @@ model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg
 
 epochs = 1
 batch_size = 4
-lr = 0.0001
+lr = 0.001250
 model.compile(
     loss={
         'out': Losses.focal_plus_smooth()
@@ -99,9 +99,9 @@ model.compile(
     optimizer=keras.optimizers.Adam(lr=lr, clipnorm=0.001)
 )
 
-train_generator = Generator.Generator(widerDataset,anchors_cfg,batch_size=batch_size,batch_by='aspect_ratio',preprocess=False)
+train_generator = Generator.Generator(widerDataset,anchors_cfg,batch_size=batch_size,batch_by='aspect_ratio',preprocess=True,max_shape=(640,640))
 
-mc = keras.callbacks.ModelCheckpoint('wider_cropped_face_{epoch:08d}.h5', 
+mc = keras.callbacks.ModelCheckpoint('hpctrained_{epoch:08d}.h5', 
                                      save_weights_only=True, save_freq='epoch')
 
 logdir = "logs/scalars/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
