@@ -67,10 +67,9 @@ Use the frozen graph to make inference graph using the Intel Openvino Model Opti
 
 This implementation achieved 43.95 mAP on WIDER VALIDATION (3226 images) after 9 epochs of training on the WIDER TRAINING dataset. The detector runs at approx 12 fps on Nvidia 1080.  This implementation did not use the fovial features since the aim was to make it lightweight (therefore deconv layers are also not used in the context module).
 
-### Deviations from the paper
+### Training Specifications
 
-Adam optimizer. Fovial feature and deconv layer not implemented for keeping the model lightweight.
-
+SGD optimizer and OHEM loss with smooth l1 loss for box and fovial targets
 
 ## TODO
 
