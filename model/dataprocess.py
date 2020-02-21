@@ -12,8 +12,8 @@ class WiderDataset:
     def __init__(self,image_folder_path,label_path,style="tlwh"):
         self.style = style
         im_paths = self.get_image_paths(image_folder_path)
-        image_labels = self.get_labels(label_path)
-        self.data = self.get_image_unified(im_paths,image_labels)
+        image_labels, image_fovials = self.get_labels(label_path)
+        self.data = self.get_image_unified(im_paths,image_labels,image_fovials)
         return 
         
     def get_image_paths(self,folder_path="../dataset/Wider/WIDER_train/images/"):
@@ -29,25 +29,31 @@ class WiderDataset:
         image_names = []
         flag = False
         image_labels = {}
+        image_fovials = {}
         for line in label_file:
             sp = line.strip().split('/')
             if len(sp)>1:
                 image_names.append(sp[-1])
                 image_labels[image_names[-1]] = []
+                image_fovials[image_names[-1]] = []
+                continue
             cor = line.strip().split(' ')
             if len(cor)==1:
                 continue
             image_labels[image_names[-1]].append([int(val) for val in cor[:4]])
+            if len(cor)>18:
+                image_fovials[image_names[-1]].append([float(val) for val in cor[4:19]])
         label_file.close()
-        return image_labels
+        return image_labels, image_fovials
         
-    def get_image_unified(self,image_paths,image_lables_dict):
+    def get_image_unified(self,image_paths,image_lables_dict,image_fovials_dict):
         data = []
         for im_p in image_paths:
             im_name = im_p.strip().split('/')[-1]
             data_object = {}
             data_object['path'] = im_p
             data_object['bbox'] = image_lables_dict[im_name]
+            data_object['fovial'] = image_fovials_dict[im_name]
             data.append(data_object)
         return data
     

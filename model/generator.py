@@ -17,7 +17,7 @@ class Generator(keras.utils.Sequence):
     Generator class for training
     """
 
-    def __init__(self,dataset,anchors_cfg,batch_size=1,batch_by='random',preprocess=False,max_shape=None
+    def __init__(self,dataset,anchors_cfg,batch_size=1,batch_by='random',fovial=False,preprocess=False,max_shape=None
                     ,save_annotations=False,evaluation=False,save_annotations_dir="../../validation_gt_generator/"):
         self.len = len(dataset.data) 
         self.save_annotations= save_annotations
@@ -25,6 +25,9 @@ class Generator(keras.utils.Sequence):
         self.save_annotations_dir = save_annotations_dir
         self.do_preprocess = preprocess
         self.image_paths , self.annotations = self.get_PathsAndAnnotations_dataset(dataset)
+        self.fovial_present = fovial
+        if self.fovial_present:
+            self.fovial = self.get_fovial_features(dataset)
         self.batch_size = batch_size
         self.anchors_cfg = anchors_cfg
         self.make_batches()
@@ -41,6 +44,21 @@ class Generator(keras.utils.Sequence):
             paths.append(dataset.data[i]['path'])
             annotations.append(self.get_anchor_type(dataset.data[i]['bbox']))
         return paths, annotations
+
+    def get_fovial_features(self,dataset):
+        fovial = []
+        for i in range(self.len):
+            ft = []
+            for k in range(len(dataset.data[i]['fovial'])):
+                ft2 = []
+                for j in range(5):
+                    start = j*3
+                    # print(dataset.data[i]['fovial'])
+                    ft2.append(dataset.data[i]['fovial'][k][start])
+                    ft2.append(dataset.data[i]['fovial'][k][start+1])
+                ft.append(ft2)
+            fovial.append(ft)
+        return fovial
 
     def get_anchor_type(self,labels):
         new_label = []
@@ -73,12 +91,12 @@ class Generator(keras.utils.Sequence):
         for i in range(len(batch)):
             if self.do_preprocess:
                 image = Image.open(self.image_paths[batch[i]]).convert('RGB')
-                r = random.uniform(0.3,1.5)
-                image = ImageEnhance.Brightness(image).enhance(r)
-                r = random.uniform(0.6,1.5)
-                image = ImageEnhance.Color(image).enhance(r)
-                r = random.uniform(0.3,1.5)
-                image = ImageEnhance.Contrast(image).enhance(r)
+                # r = random.uniform(0.3,1.5)
+                # image = ImageEnhance.Brightness(image).enhance(r)
+                # r = random.uniform(0.6,1.5)
+                # image = ImageEnhance.Color(image).enhance(r)
+                # r = random.uniform(0.3,1.5)
+                # image = ImageEnhance.Contrast(image).enhance(r)
                 image_batch.append(image)
             else:
                 image_batch.append(np.asarray(Image.open(self.image_paths[batch[i]]).convert('RGB')))
@@ -112,12 +130,15 @@ class Generator(keras.utils.Sequence):
         annotations_batch['bbox'] = new_boxes
         return image_batch,annotations_batch
 
-    def modify_annotations(self,x_off,y_off,annotations,square_size,to_width=640,to_height=640):
+    def modify_annotations(self,x_off,y_off,annotations,square_size,to_width=640,to_height=640,flip=False):
         ### first get the annotations only in the square box
         new_boxes = []
         boxes = annotations
         for i,box in enumerate(boxes):
                 nbox = [box[0]-x_off,box[1]-y_off,box[2]-x_off,box[3]-y_off]
+                if flip==True:
+                    nbox[0] = to_width - nbox[0]
+                    nbox[2] = to_width - nbox[2]
                 flag = True
                 if min(nbox)>=0:
                     if nbox[0]<square_size and nbox[2]<square_size :
@@ -131,15 +152,61 @@ class Generator(keras.utils.Sequence):
                     flag= False
                 if flag == False:
                     if (nbox[0]+nbox[2])/2<640:
-                            if (nbox[1]+nbox[3])/2 < 480:
+                            if (nbox[1]+nbox[3])/2 < 640:
                                 new_boxes.append(nbox)
         ## secondly resize them 
         ratio = float(to_width)/float(square_size)
         new_boxes = np.array(new_boxes)
         new_boxes = new_boxes * ratio
         return new_boxes
+    
+    def modify_annotations_with_fovial(self,x_off,y_off,annotations,square_size,fovial,to_width=640,to_height=640,flip=False):
+        ### first get the annotations only in the square box
+        new_boxes = []
+        new_fovial = []
+        boxes = annotations
+        for i,box in enumerate(boxes):
+                ##### croppping the coordinates
+                nbox = [box[0]-x_off,box[1]-y_off,box[2]-x_off,box[3]-y_off]
+                nfovial = []
+                for j in range(10):
+                    if j%2==0:
+                        nfovial.append(fovial[i][j] - x_off)
+                    else:
+                        nfovial.append(fovial[i][j] - y_off)
+                if flip==True:
+                    nbox[0] = to_width - nbox[0]
+                    nbox[2] = to_width - nbox[2]
+                    for j in range(5):
+                        k = j*2
+                        nfovial[k] = to_width - nfovial[k]
+                ##### Selecting valid bbox and fovials
+                flag = True
+                if min(nbox)>=0:
+                    if nbox[0]<square_size and nbox[2]<square_size :
+                        if nbox[1]<square_size and nbox[3]<square_size:
+                            new_boxes.append(nbox)
+                            new_fovial.append(nfovial)
+                        else:
+                            flag = False
+                    else:
+                        flag = False
+                else:
+                    flag= False
+                if flag == False:
+                    if (nbox[0]+nbox[2])/2<640:
+                            if (nbox[1]+nbox[3])/2 < 640:
+                                new_boxes.append(nbox)
+                                new_fovial.append(nfovial)
+        ## secondly resize them 
+        ratio = float(to_width)/float(square_size)
+        new_boxes = np.array(new_boxes)
+        new_fovial = np.array(new_fovial)
+        new_fovial = new_fovial * ratio
+        new_boxes = new_boxes * ratio
+        return new_boxes, new_fovial
 
-    def modify_annotations_resize(self,annotations,image_width,image_height,to_width=640,to_height=640):
+    def modify_annotations_resize(self,annotations,image_width,image_height,to_width=640,to_height=640,flip=False):
         new_boxes = []
         boxes = annotations
         width_ratio = float(to_width)/float(image_width)
@@ -150,6 +217,9 @@ class Generator(keras.utils.Sequence):
                 nbox[1] = nbox[1]*width_ratio
                 nbox[2] = nbox[2]*height_ratio
                 nbox[3] = nbox[3]*height_ratio
+                if flip==True:
+                    nbox[0] = to_width - nbox[0]
+                    nbox[1] = to_width - nbox[1]
                 new_boxes.append(nbox)
                 # flag = True
                 # if min(nbox)>=0:
@@ -209,51 +279,99 @@ class Generator(keras.utils.Sequence):
         annotations_batch['bbox'] = new_boxes
         return image_batch,annotations_batch
 
-    def preprocess(self,image_batch,annotations_batch):
+    def preprocess(self,batch,annotations_batch):
         # print(annotations_batch['bbox'])
         cropped_image = []
         new_boxes = []
-        for i,image in enumerate(image_batch):
-            # print(image.shape)
-            o_width ,o_height = image.size
-            # o_width = image.shape[1]
-            # o_height = image.shape[0]
-            sz = min(o_height,o_width)
-            ### Changing here to resize all the images to size 640, 640 
-            # square_size = random.randint(int(0.3*sz),int(sz))
-            square_size = sz
-            # print(square_size)
-            # x_off = random.randint(0,o_width - square_size)
-            # y_off = random.randint(0,o_height - square_size)
-            x_off = 0
-            y_off = 0
-            # boxes = np.zeros((1,4))
-            # boxes[0] = [y_off/o_height,x_off/o_width,(y_off+square_size)/o_height,(x_off+square_size)/o_width]
-            # imp = tf.keras.preprocessing.image.img_to_array(im)
-            # imp = tf.expand_dims(image,axis=0)
-            #im_cropped = tf.image.crop_and_resize(imp,boxes,np.array([0]),np.array([640,640]))
-            to_width = 640
-            to_height = 640
-            # im_cropped = tf.image.crop_and_resize(imp,boxes,np.array([0]),np.array([to_width,to_width]))
-            im_cropped = image.crop((x_off,y_off,x_off + square_size,y_off + square_size))
-            im_resized = im_cropped.resize((to_width,to_height))
-            # im_resized = image.resize((to_width,to_height))
-            # im_cropped = tf.image.crop_to_bounding_box(imp,x_off,y_off,square_size,square_size)
-            # print("im_cropped: ",im_cropped.size)
-            # print("im_resize: ",im_resized.size)
-            # cropped_image.append(np.array(im_cropped[0])) for tf 2.0
-            cropped_image.append(np.asarray(im_resized))
-            # print(cropped_image[0])
-            nb = self.modify_annotations(x_off,y_off,annotations_batch['bbox'][i],square_size,to_width,to_width)
-            # nb = self.modify_annotations_resize(annotations_batch['bbox'][i],image_width=o_width,image_height=o_height,to_width=to_width,to_height=to_height)
-            # cropped_image.append(np.array(tf.image.resize_with_crop_or_pad(image,480,640)))
-            # new_boxes.append(self.get_cropped_annotations(annotations_batch['bbox'][i],image.shape))
-            new_boxes.append(nb)
-            # else:
-            #     cropped_image.append(image)
-            #     new_boxes.append(annotations_batch['bbox'][i])
+        new_fovial = []
+        if self.evaluation==True or self.evaluation==False:
+            for i,b in enumerate(batch):
+                image = Image.open(self.image_paths[b]).convert('RGB')
+                # r = random.uniform(0.3,1.5)
+                # image = ImageEnhance.Brightness(image).enhance(r)
+                # r = random.uniform(0.6,1.5)
+                # image = ImageEnhance.Color(image).enhance(r)
+                # r = random.uniform(0.3,1.5)
+                # image = ImageEnhance.Contrast(image).enhance(r)
+                # image_batch.append(image)
+                # print(image.shape)
+                o_width ,o_height = image.size
+                sz = min(o_height,o_width)
+                ### Changing here to resize all the images to size 640, 640 
+                # square_size = random.randint(int(0.3*sz),int(sz))
+                square_size = sz
+                # print(square_size)
+                # x_off = random.randint(0,o_width - square_size)
+                # y_off = random.randint(0,o_height - square_size)
+                x_off = 0
+                y_off = 0
+                # boxes = np.zeros((1,4))
+                # boxes[0] = [y_off/o_height,x_off/o_width,(y_off+square_size)/o_height,(x_off+square_size)/o_width]
+                # imp = tf.keras.preprocessing.image.img_to_array(im)
+                # imp = tf.expand_dims(image,axis=0)
+                #im_cropped = tf.image.crop_and_resize(imp,boxes,np.array([0]),np.array([640,640]))
+                to_width = 640
+                to_height = 640
+                # im_cropped = tf.image.crop_and_resize(imp,boxes,np.array([0]),np.array([to_width,to_width]))
+                im_cropped = image.crop((x_off,y_off,x_off + square_size,y_off + square_size))
+                im_resized = im_cropped.resize((to_width,to_height))
+                del im_cropped
+                del image
+                # im_resized = image.resize((to_width,to_height))
+                # im_cropped = tf.image.crop_to_bounding_box(imp,x_off,y_off,square_size,square_size)
+                # print("im_cropped: ",im_cropped.size)
+                # print("im_resize: ",im_resized.size)
+                # cropped_image.append(np.array(im_cropped[0])) for tf 2.0
+                cropped_image.append(np.asarray(im_resized))
+                # print(cropped_image[0])
+                if self.fovial_present:
+                    nb, nf = self.modify_annotations_with_fovial(x_off,y_off,annotations_batch['bbox'][i],square_size,annotations_batch['fovial'][i],to_width,to_width)
+                    new_fovial.append(nf)
+                else:
+                    nb = self.modify_annotations(x_off,y_off,annotations_batch['bbox'][i],square_size,to_width,to_width)
+                # nb = self.modify_annotations_resize(annotations_batch['bbox'][i],image_width=o_width,image_height=o_height,to_width=to_width,to_height=to_height)
+                # cropped_image.append(np.array(tf.image.resize_with_crop_or_pad(image,480,640)))
+                # new_boxes.append(self.get_cropped_annotations(annotations_batch['bbox'][i],image.shape))
+                new_boxes.append(nb)
+                
+                # else:
+                #     cropped_image.append(image)
+                #     new_boxes.append(annotations_batch['bbox'][i])
+        else:
+            for i,b in enumerate(batch):
+                image = Image.open(self.image_paths[b]).convert('RGB')
+                r = random.uniform(0.3,1.5)
+                image = ImageEnhance.Brightness(image).enhance(r)
+                r = random.uniform(0.6,1.5)
+                image = ImageEnhance.Color(image).enhance(r)
+                r = random.uniform(0.3,1.5)
+                image = ImageEnhance.Contrast(image).enhance(r)
+                o_width ,o_height = image.size
+                sz = min(o_height,o_width)
+                square_size = sz
+                x_off = 0
+                y_off = 0
+                to_width = 640
+                to_height = 640
+                im_cropped = image.crop((x_off,y_off,x_off + square_size,y_off + square_size))
+                im_resized = im_cropped.resize((to_width,to_height))
+                del im_cropped
+                del image
+                r = random.uniform(0.0,1.0)
+                if r>0.5:
+                    im_resized = im_resized.transpose(Image.FLIP_LEFT_RIGHT)
+                    flip = True
+                else:
+                    flip = False
+
+                cropped_image.append(np.asarray(im_resized))
+                nb = self.modify_annotations(x_off,y_off,annotations_batch['bbox'][i],square_size,to_width,to_width,flip)
+                new_boxes.append(nb)
+
         image_batch = cropped_image
         annotations_batch['bbox'] = new_boxes
+        if self.fovial_present:
+            annotations_batch['fovial'] = new_fovial
         return image_batch,annotations_batch
     
     def get_inputs(self, image_batch):
@@ -268,6 +386,10 @@ class Generator(keras.utils.Sequence):
         # copy all images to the upper left part of the image batch object
         for image_index, image in enumerate(image_batch):
             inputs[image_index, :image.shape[0], :image.shape[1], :image.shape[2]] = image
+
+        # for image_index, image in enumerate(image_batch):
+        #     print(image_index)
+        #     inputs[image_index] = image
 
         # if keras.backend.image_data_format() == 'channels_first':
         #     inputs = inputs.transpose((0, 3, 1, 2))
@@ -296,22 +418,22 @@ class Generator(keras.utils.Sequence):
         return
 
     def get_inputs_and_targets(self,batch):
-        t1 = current_milli_time()
-        image_batch = self.load_image_batch(batch)
-        # print("batch loading time: ", current_milli_time()-t1)
-        t1 = current_milli_time()
-        annotations_batch = {'label':[1 for i in range(len(batch))],'bbox':[self.annotations[i] for i in batch]}
-        # print("stage 1")
-        ## do preprocessing
-        # print(type(image_batch[0][0][0][0]))
-        # print(annotations_batch)
-        if self.do_preprocess:
-            image_batch , annotations_batch = self.preprocess(image_batch,annotations_batch)
+        # t1 = current_milli_time()
+
+        if self.fovial_present:
+            annotations_batch = {'label':[1 for i in range(len(batch))],'bbox':[self.annotations[i] for i in batch],'fovial':[self.fovial[i] for i in batch]}
         else:
+            annotations_batch = {'label':[1 for i in range(len(batch))],'bbox':[self.annotations[i] for i in batch]}
+
+        if self.do_preprocess:
+            image_batch , annotations_batch = self.preprocess(batch,annotations_batch)
+        else:
+            image_batch = self.load_image_batch(batch)
             annotations_batch['bbox'] = [np.array(ann).astype('float64') for ann in annotations_batch['bbox']]
-        # print("preprocessing time: ",current_milli_time()- t1)
-        # print(type(annotations_batch['bbox'][0][0][0]))
-        # print(annotations_batch)
+            if self.fovial_present:
+                annotations_batch['fovial'] = [np.array(ann).astype('float64') for ann in annotations_batch['fovial']]
+
+
         if self.save_annotations:
             save_dir = self.save_annotations_dir
             for i,b in enumerate(batch):
@@ -329,8 +451,6 @@ class Generator(keras.utils.Sequence):
         t1 = current_milli_time()
         inputs = self.get_inputs(image_batch)
         targets = self.get_targets(image_batch,annotations_batch)
-        # print("target generating time: ", current_milli_time() - t1)
-        # print("stage 4")
         return inputs,targets
 
     def __len__(self,):
@@ -338,14 +458,16 @@ class Generator(keras.utils.Sequence):
 
     def get_inputs_only(self,batch):
         t1 = current_milli_time()
-        image_batch = self.load_image_batch(batch)
+        
         # print("batch loading time: ", current_milli_time()-t1)
         t1 = current_milli_time()
-        annotations_batch = {'label':[1 for i in range(len(batch))],'bbox':[self.annotations[i] for i in batch]}
+        annotations_batch = {'label':[1 for i in range(len(batch))],'bbox':[self.annotations[i] for i in batch], 'fovial':[self.fovial[i] for i in batch]}
         if self.do_preprocess:
-            image_batch , annotations_batch = self.preprocess(image_batch,annotations_batch)
+            image_batch , annotations_batch = self.preprocess(batch,annotations_batch)
         else:
+            image_batch = self.load_image_batch(batch)
             annotations_batch['bbox'] = [np.array(ann).astype('float64') for ann in annotations_batch['bbox']]
+            annotations_batch['fovial'] = [np.array(ann).astype('float64') for ann in annotations_batch['fovial']]
         if self.save_annotations:
             save_dir = self.save_annotations_dir
             for i,b in enumerate(batch):
@@ -365,15 +487,19 @@ class Generator(keras.utils.Sequence):
         return inputs
 
     def __getitem__(self,index):
-        t1 = current_milli_time()
+        # t1 = current_milli_time()
         batch = self.batches[index]
-        
-        # print(self.image_paths[batch[0]])
-        # print("time for __getitem__: ",current_milli_time()-t1)
+
         if self.evaluation==False:
-            print(batch)
             inputs, targets = self.get_inputs_and_targets(batch)
-            targets = np.concatenate([targets[0][:,:,:4],targets[1]],axis=2)
+            ####
+            ## x1 y1 x2 y2 a1 a2 .. a10 valid_fovial label ignore_or_not
+            ### above is the description of the fovial vector created
+            if self.fovial_present:
+                targets = np.concatenate([targets[0][:,:,:4],targets[2],targets[1]],axis=2)
+            else:
+                targets = np.concatenate([targets[0][:,:,:4],targets[1]],axis=2)
+            # print("final target shape:",targets.shape)
             return inputs,targets
         else:
             inputs = self.get_inputs_only(batch)

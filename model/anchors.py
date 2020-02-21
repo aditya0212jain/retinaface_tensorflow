@@ -173,20 +173,48 @@ def get_regression_target_values(anchors,gt_boxes):
 
     return regress_target
 
+
+def get_fovial_target_values(anchors,gt_fovial):
+    mean = np.array([0,0,0,0])
+    std = np.array([0.2,0.2,0.2,0.2])
+
+    anchors_widths = anchors[:,2] - anchors[:,0]
+    anchors_height = anchors[:,3] - anchors[:,1]
+
+    anchors_center_x = (anchors[:,0] + anchors[:,2])/2
+    anchors_center_y = (anchors[:,1] + anchors[:,3])/2
+
+    regress = []
+
+    for i in range (10):
+
+        if i%2==0:
+            regress.append((gt_fovial[:,i] - anchors_center_x)/anchors_widths)
+        else:
+            regress.append((gt_fovial[:,i] - anchors_center_y)/anchors_height)
+    
+    regress_target = np.stack(regress)
+    regress_target = regress_target.T
+
+    # regress_target = (regress_target - mean)/std
+
+    return regress_target
 ############################################################################
 
 ############################################################################
 
-def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_threshold=0.5,negative_threshold=0.4):
+def get_regression_and_labels_values(anchors,gt_boxes,gt_fovial=None,image_shape=None,positive_threshold=0.5,negative_threshold=0.3):
     """
     anchors: [N,4] all anchors for a feature map
     gt_boxes: [M,5] all gt_boxes with label
     returns :
-    labels : [N,1+1] additional value for ignoring or not (1->positive 0 for negative, -1 for ignoring)
+    labels : [N,2+1] additional value for ignoring or not (1->positive 1-> for negative, -1 for ignoring)
     regression : [N,4+1] additional value for ignoring or not
     """
     labels = np.zeros((anchors.shape[0],2))
     regression = np.zeros((anchors.shape[0],5))
+    if gt_fovial is not None:
+        fovial = np.zeros((anchors.shape[0],11))
     ## get all the ious between all anchors and all gt_boxes
     t1 = current_milli_time()
     all_iou = iou.get_iou(anchors,gt_boxes)
@@ -199,17 +227,34 @@ def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_
     ## finding positive ,ignored and negative anchors
     positive_anchor_indices = max_overlap_v >= positive_threshold
     ignored_anchor_indices = (max_overlap_v>negative_threshold) & ~positive_anchor_indices
-    
+    # negative_anchor_indices = max_overlap_v <= negative_threshold
+
     ## set which ones to consider
     labels[ignored_anchor_indices,-1] = -1
     labels[positive_anchor_indices,-1] = 1
+    # labels[negative_anchor_indices,-1] = 2
     regression[ignored_anchor_indices,-1] = -1
     regression[positive_anchor_indices,-1] = 1
-    
+    # regression[negative_anchor_indices,-1] = 2
+
+    if gt_fovial is not None:
+        fovial[ignored_anchor_indices,-1] = -1
+        fovial[positive_anchor_indices,-1] = 1
+
+
     ## setting label as 1 for positive anchors (0 for negative)
     labels[positive_anchor_indices,0] = 1
+    # labels[negative_anchor_indices,1] = 1
     ## setting the regression values for each anchor corresponding to its max overlapping gt_box
     regression[:,:-1] = get_regression_target_values(anchors,gt_boxes[max_overlap])
+
+    if gt_fovial is not None:
+        fovial[:,:-1] = get_fovial_target_values(anchors,gt_fovial[max_overlap])
+
+        valid_fovial_indices = np.where(gt_fovial==-1)
+
+        fovial[valid_fovial_indices,-1] = -1
+
     
     if image_shape!=None:
         ## filtering anchors with center outside the image shape
@@ -222,27 +267,53 @@ def get_regression_and_labels_values(anchors,gt_boxes,image_shape=None,positive_
         regression[outside_indices_x,-1] = -1
         labels[outside_indices_y,-1] = -1
         regression[outside_indices_y,-1] = -1
+        if gt_fovial is not None:
+            fovial[outside_indices_x,-1] = -1
+            fovial[outside_indices_y,-1] = -1
     
-    return regression, labels
+    if gt_fovial is not None:
+        return regression, labels, fovial
+    else:
+        return regression, labels
 
 def get_regression_and_labels_batch(anchors,image_batch,annotations_batch,positive_threshold=0.5,negative_threshold=0.4):
     regression_batch = []
     label_batch = []
+    fovial_batch = []
 
-    annotations_batch = annotations_batch['bbox']
+    if 'fovial' in annotations_batch:
+        fovial_truth = annotations_batch['fovial']
+        annotations_batch = annotations_batch['bbox']
 
-    for (image,annotation) in zip(image_batch,annotations_batch):
-        # if annotation['bbox'].shape[0]:
-        # print(annotation)   
-        if annotation.any():
-            print(image.shape)
-            regression , labels = get_regression_and_labels_values(anchors,np.asarray(annotation),image.shape)
-            regression_batch.append(regression)
-            label_batch.append(labels)
-        else:
-            labels = np.zeros((anchors.shape[0],2))
-            regression = np.zeros((anchors.shape[0],5))
-            regression_batch.append(regression)
-            label_batch.append(labels)
-    
-    return np.asarray(regression_batch) , np.asarray(label_batch)
+        for (image,annotation,ft) in zip(image_batch,annotations_batch,fovial_truth):
+            # if annotation['bbox'].shape[0]:
+            # print(annotation)   
+            if annotation.any():
+                # print(image.shape)
+                regression , labels, fovial = get_regression_and_labels_values(anchors=anchors,gt_boxes=np.asarray(annotation),gt_fovial=np.asarray(ft),image_shape=image.shape)
+                regression_batch.append(regression)
+                label_batch.append(labels)
+                fovial_batch.append(fovial)
+            else:
+                labels = np.zeros((anchors.shape[0],2))
+                regression = np.zeros((anchors.shape[0],5))
+                fovial = np.zeros((anchors.shape[0],11))
+                regression_batch.append(regression)
+                label_batch.append(labels)
+                fovial_batch.append(fovial)
+        return np.asarray(regression_batch) , np.asarray(label_batch), np.asarray(fovial_batch)
+    else:
+        annotations_batch = annotations_batch['bbox']
+        for (image,annotation) in zip(image_batch,annotations_batch):
+
+            if annotation.any():
+                # print(image.shape)
+                regression , labels = get_regression_and_labels_values(anchors=anchors,gt_boxes=np.asarray(annotation),image_shape=image.shape)
+                regression_batch.append(regression)
+                label_batch.append(labels)
+            else:
+                labels = np.zeros((anchors.shape[0],2))
+                regression = np.zeros((anchors.shape[0],5))
+                regression_batch.append(regression)
+                label_batch.append(labels)
+        return np.asarray(regression_batch) , np.asarray(label_batch)

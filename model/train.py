@@ -47,29 +47,29 @@ cropped_wider = "../../dataset/Wider_cropped/train_images/"
 cropped_annotations = "../../dataset/Wider_cropped/ground_truth.txt"
 wider_train = "../../dataset/Wider/WIDER_train/images/"
 wider_annotation = "../../dataset/Wider/wider_face_split/wider_face_train_bbx_gt.txt"
-
+retinaface_annotation_train = "../../dataset/retinaface_annotations/train/label.txt"
 
 
 # mData = DataHandler.WiderDataset(cropped_wider,cropped_annotations)
-mData = DataHandler.WiderDataset(wider_train,wider_annotation)
+mData = DataHandler.WiderDataset(wider_train,retinaface_annotation_train)
 # mData = DataHandler.maviData(train_loc,annotations_loc)
 
 
-pixels = []
-for data in mData.data:
-    img = Image.open(data["path"])
-    pixels.append(img.size[0]*img.size[1])
-p = np.array(pixels)
-inde = p<807200
-new_data = []
-for i,datum in enumerate(mData.data):
-    if inde[i]==True:
-        new_data.append(mData.data[i])
-print(len(new_data))
-mData.data = new_data
+# pixels = []
+# for data in mData.data:
+#     img = Image.open(data["path"])
+#     pixels.append(img.size[0]*img.size[1])
+# p = np.array(pixels)
+# inde = p<807200
+# new_data = []
+# for i,datum in enumerate(mData.data):
+#     if inde[i]==True:
+#         new_data.append(mData.data[i])
+# print(len(new_data))
+# mData.data = new_data
 
 
-len(mData.data)
+print("lenght of data:" +str(len(mData.data)))
 
 
 # # Loading Model
@@ -88,30 +88,30 @@ input_shape = (None,None,3)#(480,640,3)
 model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg,separate_evaluators=True)#,separate_evaluators=True
 
 
-# model.load_weights('./Dec29_6_00000005.h5')
-# model.load_weights('./1Jan_sep_00000008.h5')
-model.load_weights('./28Jan_2_00000001.h5')
+# model.load_weights('./10Jan_2_00000006.h5')
 
 
-epochs = 7
-batch_size = 2
+epochs = 10
+batch_size = 4
 # lr = 0.00003125
-lr = 0.0000625#125
+lr = 0.000125#125
+# lr = 0.000625
 # 'out_classification': Losses.focal()
 model.compile(
     loss={
-        'out': Losses.focal_plus_smooth()
+        'out': Losses.focal_plus_smooth_plus_fovial()
     },
-    optimizer=keras.optimizers.Adam(lr=lr, clipnorm=0.001)
+    optimizer=keras.optimizers.SGD(lr=lr,decay=0.0005,momentum=0.9,clipnorm=0.01)
 )
 
+#keras.optimizers.Adam(lr=lr, clipnorm=0.001)
 
 # # Preparing Generator
 
 train_generator = Generator.Generator(mData,anchors_cfg,batch_size=batch_size,batch_by='aspect_ratio',preprocess=True)
 
 
-mc = keras.callbacks.ModelCheckpoint('29Jan_1_{epoch:08d}.h5', 
+mc = keras.callbacks.ModelCheckpoint('21Feb_4_{epoch:08d}.h5', 
                                      save_weights_only=True, save_freq='epoch')
 
 
@@ -119,9 +119,9 @@ logdir = "logs/scalars/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
 
 
-model.summary()
+# model.summary()
 
-
+print("starting training")
 
 history1 = model.fit_generator(generator=train_generator,
                               steps_per_epoch=len(mData.data)/(batch_size),
@@ -130,4 +130,6 @@ history1 = model.fit_generator(generator=train_generator,
                               callbacks= [mc,tensorboard_callback]
                              )
 
-pickle.dump(history1,open(filename+".pkl",'wb'))
+filename = "epoch3"
+
+pickle.dump(history1.history['loss'],open(filename+".pkl",'wb'))

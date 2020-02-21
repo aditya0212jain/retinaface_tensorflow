@@ -55,12 +55,14 @@ input_shape = (640,640,3)#(480,640,3)
 
 # model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg,separate_evaluators=True)
 model = Model.resnet50_retinanet_bbox(input_shape=input_shape,anchors_cfg=anchors_cfg,
-                                      separate_evaluators=True,context=True,score_threshold=0.05,nms_threshold=0.5,
+                                      separate_evaluators=True,context=True,score_threshold=0.5,nms_threshold=0.5,
                                       image_shape=(640,640)
                                      )
 
 # model.load_weights('./28Jan_2_00000001.h5')
-model.load_weights('./29Jan_1_00000005.h5')
+# model.load_weights('./29Jan_1_00000005.h5')
+model.load_weights('./8Jan_1_00000006.h5')
+# model.load_weights('../notebooks/5Feb_1_00000012.h5')
 
 
 
@@ -69,9 +71,9 @@ train_generator = Generator.Generator(mData,anchors_cfg,batch_size=batch_size,ba
                                      save_annotations=True,evaluation=True,save_annotations_dir="../../validation_gt_generator/")
 
 # anchors = Anchors.generate_anchors_from_input_shape((480,640),anchors_cfg)
-len(mData.data)
+# len(mData.data)
 
-train_generator.len
+print("len ",train_generator.len)
 
 
 save_dir = "../../evaluate_results/"
@@ -81,6 +83,8 @@ save_dir = "../../validation_det/"
 def save_results(save_dir,image_name,boxes,scores):
     write_path = save_dir + image_name[:-3]+"txt"
     f = open(write_path,'w')
+    if len(boxes)>300:
+        boxes = boxes[:300]
     for i,box in enumerate(boxes):
         s = "face " + str(scores[i])+" "
         for b in box:
@@ -89,7 +93,10 @@ def save_results(save_dir,image_name,boxes,scores):
         f.write(s)
     f.close()
 
-for i in range(len(mData.data)):
+num_data = len(mData.data)
+# num_data = 1000
+
+for i in range(num_data):
     t,path = train_generator.__getitem__(i)
     ans = model.predict(t)
     bbox = ans[0][0]
