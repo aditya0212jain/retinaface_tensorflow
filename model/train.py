@@ -51,7 +51,7 @@ retinaface_annotation_train = "../../dataset/retinaface_annotations/train/label.
 
 
 # mData = DataHandler.WiderDataset(cropped_wider,cropped_annotations)
-mData = DataHandler.WiderDataset(wider_train,retinaface_annotation_train)
+mData = DataHandler.WiderDataset(wider_train,wider_annotation)
 # mData = DataHandler.maviData(train_loc,annotations_loc)
 
 
@@ -69,7 +69,7 @@ mData = DataHandler.WiderDataset(wider_train,retinaface_annotation_train)
 # mData.data = new_data
 
 
-print("lenght of data:" +str(len(mData.data)))
+print("length of data:" +str(len(mData.data)))
 
 
 # # Loading Model
@@ -85,7 +85,7 @@ anchors_cfg[4] = {'base_size':256,'ratios':[1],'scales':np.array([2 ** 0, 2 ** (
 input_shape = (None,None,3)#(480,640,3)
 
 
-model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg,separate_evaluators=True)#,separate_evaluators=True
+model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg)
 
 
 # model.load_weights('./10Jan_2_00000006.h5')
@@ -99,7 +99,7 @@ lr = 0.000125#125
 # 'out_classification': Losses.focal()
 model.compile(
     loss={
-        'out': Losses.focal_plus_smooth_plus_fovial()
+        'out': Losses.ohem_plus_smooth_plus_fovial()
     },
     optimizer=keras.optimizers.SGD(lr=lr,decay=0.0005,momentum=0.9,clipnorm=0.01)
 )

@@ -55,7 +55,7 @@ input_shape = (640,640,3)#(480,640,3)
 
 # model = Model.resnet50_retinanet(input_shape=input_shape,anchors_cfg=anchors_cfg,separate_evaluators=True)
 model = Model.resnet50_retinanet_bbox(input_shape=input_shape,anchors_cfg=anchors_cfg,
-                                      separate_evaluators=True,context=True,score_threshold=0.5,nms_threshold=0.5,
+                                      score_threshold=0.5,nms_threshold=0.5,
                                       image_shape=(640,640)
                                      )
 

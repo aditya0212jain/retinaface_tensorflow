@@ -166,7 +166,7 @@ def apply_model(model,feature):
 
 #############################################################################################################################
 
-def retinanet_context(input_,anchors_cfg,features,fovial):
+def retinanet_context(input_,anchors_cfg,features,fovial=False):
     """
     Arg:
         input_ : keras input layer for taking input
@@ -219,7 +219,7 @@ def retinanet_context(input_,anchors_cfg,features,fovial):
 
 ############################################################################
 
-def resnet50_retinanet(input_shape,anchors_cfg,separate_evaluators=False,fovial=False):
+def resnet50_retinanet(input_shape,anchors_cfg,fovial=False):
     """
     creates a retinanet model with input_shape and anchors_cfg with resnet50 as backbone
     returns [N,5] where N is the total number of anchors 
@@ -235,7 +235,6 @@ def resnet50_retinanet(input_shape,anchors_cfg,separate_evaluators=False,fovial=
                                                      layer_index=layer_index)
     
     retinanet_v = retinanet_context(inputs,anchors_cfg,features,fovial)
-        # retinanet_v = retinanet_separate_evaluators(inputs,anchors_cfg,features)
     
     
     return retinanet_v
@@ -271,7 +270,7 @@ def filter_detections(ans,bbox,score_threshold=0.5,max_detections=300,nms_thresh
     nms_indices = tf.gather(indices,nms_indices)
     return nms_indices
 
-def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,image_shape=(480,640),context=False,score_threshold=0.05,nms_threshold=0.5):
+def resnet50_retinanet_bbox(input_shape,anchors_cfg,image_shape=(480,640),fovial=False,score_threshold=0.05,nms_threshold=0.5):
     """
     creates a retinanet model with input_shape and anchors_cfg with resnet50 as backbone
     returns [N,5] where N is the total number of anchors 
@@ -287,13 +286,7 @@ def resnet50_retinanet_bbox(input_shape,anchors_cfg,separate_evaluators=False,im
                                                      layer_index=layer_index)
     
     ## get the retina_net 
-    # if separate_evaluators==False:
-    #     retinanet_v = retinanet(inputs,anchors_cfg,features)
-    # else:
-    #     if context==False:
-    #         retinanet_v = retinanet_separate_evaluators(inputs,anchors_cfg,features)
-    #     else:
-    retinanet_v = retinanet_context(inputs,anchors_cfg,features)
+    retinanet_v = retinanet_context(inputs,anchors_cfg,features,fovial)
     ## Post Processing
     anchors = Anchors.generate_anchors_from_input_shape((image_shape[0],image_shape[1]),anchors_cfg)
 
